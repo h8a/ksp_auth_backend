@@ -1,0 +1,16 @@
+---
+  api:
+    version: v1.0.0
+  service:
+    host: 0.0.0.0
+    port: 5000
+    log_level: info
+    debug: True
+  db:
+    connection: postgresql+asyncpg://test_user:test_password@db:5432/test1
+  jwt:
+    secret: LMrNr8qFmTsBQ91
+    exp_min: 1440
+    leeway_sec: 10
+    algorithm: HS256
+    signature: ksp

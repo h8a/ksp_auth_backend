@@ -1,0 +1,125 @@
+version: '3'
+
+services:
+  traefik:
+    image: traefik:v2.5
+    container_name: api_gateway
+    ports:
+      - 8080:8080
+      - 80:80
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    networks:
+      - ksp
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedByDefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--log.level=DEBUG"
+    restart: always
+    environment:
+      TRAEFIK_LOG_LEVEL: DEBUG
+    labels:
+      - "traefik.docker.network=ksp"
+
+  app-backend:
+    container_name: ksp-auth-backend
+    build:
+      context: .
+    restart: always
+    ports:
+      - 5000:5000
+    environment:
+      API_VERSION: v1.0.0
+      SERVICE_HOST: 0.0.0.0
+      SERVICE_PORT: 5000
+      SERVICE_LOG_LEVEL: debug
+      SERVICE_DEBUG: True
+      DB: postgresql+asyncpg://test_user:test_password@db:5432/test1
+      JWT_SECRET: LMrNr8qFmTsBQ91
+      JWT_EXP_MIN: 1440
+      JWT_LEEWAY: 10
+      JWT_ALGORITHM: HS256
+      JWT_SIGNATURE: ksp
+    depends_on:
+      db:
+        condition: service_healthy
+      traefik:
+        condition: service_started
+    networks:
+      - ksp
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=ksp"
+      - "traefik.http.routers.app-backend-ksp-auth-backend.service=app-backend-ksp-auth-backend"
+      - "traefik.http.routers.app-backend-ksp-auth-backend.entrypoints=web"
+      - "traefik.http.routers.app-backend-ksp-auth-backend.rule=PathPrefix(`/api/v1.0.0/auth`)"
+
+  app-employees:
+    image: heri8a/ksp_backend:1.0.0
+    container_name: ksp-mployees
+    restart: always
+    ports:
+      - 5001:5000
+    environment:
+      API_VERSION: v1.0.0
+      SERVICE_HOST: 0.0.0.0
+      SERVICE_PORT: 5000
+      SERVICE_LOG_LEVEL: debug
+      SERVICE_DEBUG: True
+      DB: postgresql+asyncpg://test_user:test_password@db_employees:5432/test2
+    depends_on:
+      db_employees:
+        condition: service_healthy
+    networks:
+      - ksp
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=ksp"
+      - "traefik.http.routers.app-employees-ksp-auth-backend.service=app-employees-ksp-auth-backend"
+      - "traefik.http.routers.app-employees-ksp-auth-backend.entrypoints=web"
+      - "traefik.http.routers.app-employees-ksp-auth-backend.rule=PathPrefix(`/api/v1.0.0/employees`)"
+      - "traefik.http.routers.app-employees-ksp-auth-backend.middlewares=app-employees-ksp-auth-backend-middleware"
+      - "traefik.http.middlewares.app-employees-ksp-auth-backend-middleware.forwardauth.address=http://app-backend:5000/api/v1.0.0/auth/token/validate"
+
+  db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_DB: test1
+    networks:
+      - ksp
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  db_employees:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_DB: test2
+    networks:
+      - ksp
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - pgdata_employees:/var/lib/postgresql/data
+
+networks:
+  ksp:
+
+volumes:
+  pgdata:
+  pgdata_employees:
